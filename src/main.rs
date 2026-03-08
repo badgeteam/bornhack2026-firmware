@@ -2,9 +2,16 @@
 #![no_main]
 
 mod board;
+mod display;
+
+use crate::display::display_init;
 use embassy_executor::Spawner;
-use embassy_nrf::gpio::{AnyPin, Input, Level, Output, OutputDrive, Pull};
+use embassy_nrf::{
+    Peri,
+    gpio::{AnyPin, Input, Level, Output, OutputDrive, Pull},
+};
 use embassy_time::Timer;
+
 use {defmt_rtt as _, panic_probe as _};
 
 // SPI
@@ -12,6 +19,16 @@ use embassy_nrf::{bind_interrupts, peripherals, spim};
 bind_interrupts!(struct Irqs {
     SPIM3 => spim::InterruptHandler<peripherals::SPI3>;
 });
+
+// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
+macro_rules! mk_static {
+    ($t:ty,$val:expr) => {{
+        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
+        #[deny(unused_attributes)]
+        let x = STATIC_CELL.uninit().write(($val));
+        x
+    }};
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -34,16 +51,22 @@ async fn main(spawner: Spawner) {
     // EPD dislay
     let mut epd_bus_config = spim::Config::default();
     epd_bus_config.frequency = spim::Frequency::M16;
-    let mut epd_spim = spim::Spim::new_txonly(
-        board!(p, epd_spi),
-        Irqs,
-        board!(p, epd_sck),
-        board!(p, epd_data),
-        epd_bus_config,
-    );
     let mut epd_chip_select = Output::new(board!(p, epd_csn), Level::High, OutputDrive::Standard);
 
-    spawner.spawn(epd_task(epd_spim, epd_chip_select)).unwrap();
+    let mut epd_spi = mk_static!(Peri<'static, peripherals::SPI3>, board!(p, epd_spi));
+    let mut epd_sck = mk_static!(Peri<'static, peripherals::P0_08>, board!(p, epd_sck));
+    let mut epd_data = mk_static!(Peri<'static, peripherals::P0_27>, board!(p, epd_data));
+
+    display_init(
+        Irqs,
+        &mut epd_spi,
+        &mut epd_sck,
+        &mut epd_data,
+        epd_bus_config,
+    )
+    .expect("Could not init display");
+
+    // spawner.spawn(epd_task(epd_spim, epd_chip_select)).unwrap();
 
     /*loop {
         led_red.set_low();
@@ -79,6 +102,3 @@ async fn button_task(mut button: Input<'static>, mut led: Output<'static>) {
         Timer::after_millis(500).await;
     }
 }
-
-#[embassy_executor::task(pool_size = 1)]
-async fn epd_task(mut epd_spim: spim::Spim<'static>, mut csn: Output<'static>) {}

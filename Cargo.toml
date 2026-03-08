@@ -4,7 +4,6 @@ name = "bornhack2026-firmware"
 version = "0.1.0"
 license = "MIT"
 publish = false
-default-run = "main"
 
 [dependencies]
 embassy-futures = { version = "0.1.2" }
@@ -41,5 +40,5 @@ debug = 2
 
 [package.metadata.embassy]
 build = [
-  { target = "thumbv7em-none-eabi", artifact-dir = "out/examples/nrf52840" }
+  { target = "thumbv7em-none-eabi" }
 ]
