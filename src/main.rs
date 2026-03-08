@@ -51,17 +51,30 @@ async fn main(spawner: Spawner) {
     // EPD dislay
     let mut epd_bus_config = spim::Config::default();
     epd_bus_config.frequency = spim::Frequency::M16;
-    let mut epd_chip_select = Output::new(board!(p, epd_csn), Level::High, OutputDrive::Standard);
 
     let mut epd_spi = mk_static!(Peri<'static, peripherals::SPI3>, board!(p, epd_spi));
     let mut epd_sck = mk_static!(Peri<'static, peripherals::P0_08>, board!(p, epd_sck));
     let mut epd_data = mk_static!(Peri<'static, peripherals::P0_27>, board!(p, epd_data));
+
+    let mut epd_csn = Output::new(board!(p, epd_csn), Level::High, OutputDrive::Standard);
+    let mut epd_dc = Output::new(board!(p, epd_dc), Level::High, OutputDrive::Standard);
+    let mut epd_reset = Output::new(board!(p, epd_reset), Level::Low, OutputDrive::Standard);
+    let mut epd_busy = Input::new(board!(p, epd_busy), Pull::Up);
+
+    epd_reset.set_low(); // Reset
+    Timer::after_millis(100).await;
+    epd_reset.set_high(); // Enable
+    Timer::after_millis(100).await;
 
     display_init(
         Irqs,
         &mut epd_spi,
         &mut epd_sck,
         &mut epd_data,
+        epd_csn,
+        epd_dc,
+        epd_reset,
+        epd_busy,
         epd_bus_config,
     )
     .expect("Could not init display");
