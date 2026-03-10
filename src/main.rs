@@ -3,8 +3,9 @@
 
 mod board;
 mod display;
+mod display_interface;
 
-use crate::display::display_init;
+use crate::{display::display_init, display_interface::DisplayInterface};
 use embassy_executor::Spawner;
 use embassy_nrf::{
     Peri,
@@ -66,18 +67,10 @@ async fn main(spawner: Spawner) {
     epd_reset.set_high(); // Enable
     Timer::after_millis(100).await;
 
-    display_init(
-        Irqs,
-        &mut epd_spi,
-        &mut epd_sck,
-        &mut epd_data,
-        epd_csn,
-        epd_dc,
-        epd_reset,
-        epd_busy,
-        epd_bus_config,
-    )
-    .expect("Could not init display");
+    let mut interface = DisplayInterface::new(Irqs, epd_spi, epd_sck, epd_data, epd_bus_config);
+
+    display_init(&mut interface, epd_csn, epd_dc, epd_reset, epd_busy)
+        .expect("Could not init display");
 
     // spawner.spawn(epd_task(epd_spim, epd_chip_select)).unwrap();
 
