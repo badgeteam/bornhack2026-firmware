@@ -5,13 +5,13 @@ mod board;
 mod display;
 mod display_interface;
 
-use crate::{display::display_init, display_interface::DisplayInterface};
+use crate::{display::Display, display_interface::BidirectionalSpi};
 use embassy_executor::Spawner;
 use embassy_nrf::{
     Peri,
-    gpio::{AnyPin, Input, Level, Output, OutputDrive, Pull},
+    gpio::{Input, Level, Output, OutputDrive, Pull},
 };
-use embassy_time::Timer;
+use embassy_time::{Delay, Timer};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -53,24 +53,21 @@ async fn main(spawner: Spawner) {
     let mut epd_bus_config = spim::Config::default();
     epd_bus_config.frequency = spim::Frequency::M16;
 
-    let mut epd_spi = mk_static!(Peri<'static, peripherals::SPI3>, board!(p, epd_spi));
-    let mut epd_sck = mk_static!(Peri<'static, peripherals::P0_08>, board!(p, epd_sck));
-    let mut epd_data = mk_static!(Peri<'static, peripherals::P0_27>, board!(p, epd_data));
+    let epd_spi = mk_static!(Peri<'static, peripherals::SPI3>, board!(p, epd_spi));
+    let epd_sck = mk_static!(Peri<'static, peripherals::P0_08>, board!(p, epd_sck));
+    let epd_data = mk_static!(Peri<'static, peripherals::P0_27>, board!(p, epd_data));
 
-    let mut epd_csn = Output::new(board!(p, epd_csn), Level::High, OutputDrive::Standard);
-    let mut epd_dc = Output::new(board!(p, epd_dc), Level::High, OutputDrive::Standard);
-    let mut epd_reset = Output::new(board!(p, epd_reset), Level::Low, OutputDrive::Standard);
-    let mut epd_busy = Input::new(board!(p, epd_busy), Pull::Up);
+    let epd_csn = Output::new(board!(p, epd_csn), Level::High, OutputDrive::Standard);
+    let epd_dc = Output::new(board!(p, epd_dc), Level::High, OutputDrive::Standard);
+    let epd_reset = Output::new(board!(p, epd_reset), Level::Low, OutputDrive::Standard);
+    let epd_busy = Input::new(board!(p, epd_busy), Pull::Up);
 
-    epd_reset.set_low(); // Reset
-    Timer::after_millis(100).await;
-    epd_reset.set_high(); // Enable
-    Timer::after_millis(100).await;
+    let interface = BidirectionalSpi::new(Irqs, epd_spi, epd_sck, epd_data, epd_bus_config);
+    let mut display = Display::new(Delay, interface, epd_csn, epd_dc, epd_reset, epd_busy);
 
-    let mut interface = DisplayInterface::new(Irqs, epd_spi, epd_sck, epd_data, epd_bus_config);
+    display.reset().await.expect("Could not reset the display");
 
-    display_init(&mut interface, epd_csn, epd_dc, epd_reset, epd_busy)
-        .expect("Could not init display");
+    display.init().await.expect("Could not init display");
 
     // spawner.spawn(epd_task(epd_spim, epd_chip_select)).unwrap();
 

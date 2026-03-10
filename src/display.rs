@@ -1,39 +1,79 @@
-use embassy_nrf::{
-    gpio::{self, Input, Output},
-    interrupt, spim,
-};
+use embedded_hal::digital::{InputPin, OutputPin};
+use embedded_hal_async::{delay::DelayNs, spi::SpiBus};
 
-use crate::display_interface::DisplayInterface;
+#[derive(Debug)]
+pub enum DisplayError {
+    SpiError,
+    PinError,
+}
 
-pub fn display_init<SPI, SCK, DATA, IRQ>(
-    interface: &mut DisplayInterface<SPI, SCK, DATA, IRQ>,
-    mut epd_csn: Output<'static>,
-    mut epd_dc: Output<'static>,
-    mut epd_reset: Output<'static>,
-    mut epd_busy: Input<'static>,
-) -> Result<(), spim::Error>
+pub struct Display<DELAY, SPI, CSN, DC, RESET, BUSY>
 where
-    SPI: spim::Instance,
-    SCK: gpio::Pin,
-    DATA: gpio::Pin,
-    IRQ: interrupt::typelevel::Binding<SPI::Interrupt, spim::InterruptHandler<SPI>> + Clone,
+    DELAY: DelayNs,
+    SPI: SpiBus,
+    CSN: OutputPin,
+    DC: OutputPin,
+    RESET: OutputPin,
+    BUSY: InputPin,
 {
-    epd_dc.set_low(); // Command mode
-    epd_csn.set_low(); // Activate device
+    delay: DELAY,
+    spi: SPI,
+    csn: CSN,
+    dc: DC,
+    reset: RESET,
+    busy: BUSY,
+}
 
-    let tx_data = [0x1B];
+impl<DELAY, SPI, CSN, DC, RESET, BUSY> Display<DELAY, SPI, CSN, DC, RESET, BUSY>
+where
+    DELAY: DelayNs,
+    SPI: SpiBus,
+    CSN: OutputPin,
+    DC: OutputPin,
+    RESET: OutputPin,
+    BUSY: InputPin,
+{
+    pub fn new(delay: DELAY, spi: SPI, csn: CSN, dc: DC, reset: RESET, busy: BUSY) -> Self {
+        Self {
+            delay,
+            spi,
+            csn,
+            dc,
+            reset,
+            busy,
+        }
+    }
 
-    interface.tx(&tx_data)?;
+    pub async fn reset(&mut self) -> Result<(), DisplayError> {
+        self.reset.set_low().map_err(|_| DisplayError::PinError)?; // Reset
+        self.delay.delay_ms(100).await;
+        self.reset.set_high().map_err(|_| DisplayError::PinError)?; // Enable
+        self.delay.delay_ms(100).await;
+        Ok(())
+    }
 
-    epd_dc.set_high(); // Data mode
+    pub async fn init(&mut self) -> Result<(), DisplayError> {
+        self.dc.set_low().map_err(|_| DisplayError::PinError)?; // Command mode
+        self.csn.set_low().map_err(|_| DisplayError::PinError)?; // Activate device
 
-    let mut rx_data = [0u8; 2];
+        let tx_data = [0x1B];
 
-    interface.rx(&mut rx_data)?;
+        self.spi
+            .write(&tx_data).await
+            .map_err(|_| DisplayError::SpiError)?;
 
-    epd_csn.set_high(); // Deactivate device
+        self.dc.set_high().map_err(|_| DisplayError::PinError)?; // Data mode
 
-    defmt::info!("Read from EPD: {=[u8]:#04x}", rx_data);
+        let mut rx_data = [0u8; 2];
 
-    Ok(())
+        self.spi
+            .read(&mut rx_data).await
+            .map_err(|_| DisplayError::SpiError)?;
+
+        self.csn.set_high().map_err(|_| DisplayError::PinError)?; // Deactivate device
+
+        defmt::info!("Read from EPD: {=[u8]:#04x}", rx_data);
+
+        Ok(())
+    }
 }
