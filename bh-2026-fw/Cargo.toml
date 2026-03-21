@@ -1,0 +1,27 @@
+[package]
+edition = "2024"
+name = "bornhack2026-firmware"
+version = "0.1.0"
+license = "MIT"
+publish = false
+
+[dependencies]
+bh-2026-hal = { path = "../bh-2026-hal" }
+embassy-executor = { version = "0.10.0",  features = ["platform-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
+embassy-time = { version = "0.5.1", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+
+defmt = "1.0.1"
+defmt-rtt = "1.1.0"
+
+cortex-m = { version = "0.7.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+
+[profile.release]
+debug = 2
+
+[package.metadata.embassy]
+build = [
+  { target = "thumbv7em-none-eabi" }
+]

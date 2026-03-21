@@ -1,0 +1,20 @@
+[package]
+name = "bh-2026-hal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embassy-nrf = { version = "0.10.0", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time", "net-driver"] }
+embassy-usb = { version = "0.6.0", features = [ "defmt" ] }
+embassy-time = { version = "0.5.1", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-executor = { version = "0.10.0",  features = ["defmt"] }
+
+embedded-io = { version = "0.7.1", features = ["defmt"]  }
+embedded-io-async = { version = "0.7.0", features = ["defmt"] }
+embedded-hal = { version = "1.0" }
+embedded-hal-async = { version = "1.0" }
+embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+embedded-storage = "0.3.1"
+
+defmt = "1.0.1"
+static_cell = { version = "2" }
