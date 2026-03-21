@@ -1,15 +1,25 @@
 #![no_std]
 
 mod board;
+pub mod button;
 mod display;
 mod display_interface;
+pub mod led;
 
+use bh_2026_traits::{
+    BadgePeripherals,
+    button::{ButtonQueue, ButtonSubscriber},
+};
 use embassy_executor::Spawner;
-use embassy_nrf::{Peri, gpio::{Input, Level, Output, OutputDrive, Pull}};
+use embassy_nrf::{
+    Peri,
+    gpio::{Input, Level, Output, OutputDrive, Pull},
+    pwm::{self, SimplePwm},
+};
 use embassy_nrf::{bind_interrupts, peripherals, spim};
 use embassy_time::Delay;
 
-use crate::{display::Display, display_interface::BidirectionalSpi};
+use crate::{button::{Buttons, button_task}, display::Display, display_interface::BidirectionalSpi, led::Led};
 
 bind_interrupts!(struct Irqs {
     SPIM3 => spim::InterruptHandler<peripherals::SPI3>;
@@ -25,17 +35,37 @@ macro_rules! mk_static {
     }};
 }
 
-pub async fn init(spawner: Spawner) {
+pub async fn init(spawner: Spawner) -> BadgePeripherals<Led> {
     let p = embassy_nrf::init(Default::default());
 
-    // LEDs
-    let led_red = Output::new(board!(p, led_red), Level::High, OutputDrive::Standard);
-    let led_green = Output::new(board!(p, led_green), Level::High, OutputDrive::Standard);
-    let led_blue = Output::new(board!(p, led_blue), Level::High, OutputDrive::Standard);
+    let mut led_pwm_config = pwm::SimpleConfig::default();
+    led_pwm_config.ch0_idle_level = Level::High;
+    led_pwm_config.ch1_idle_level = Level::High;
+    led_pwm_config.ch2_idle_level = Level::High;
+    let led_pwm = SimplePwm::new_3ch(
+        p.PWM0,
+        board!(p, led_red),
+        board!(p, led_green),
+        board!(p, led_blue),
+        &led_pwm_config,
+    );
+    let led = led::Led::new(led_pwm).await;
 
     // Buttons
-    let btn_can = Input::new(board!(p, btn_can), Pull::Up);
-    let btn_exe = Input::new(board!(p, btn_exe), Pull::Up);
+
+    let button_queue = ButtonQueue::new().await;
+    let buttons = Buttons::new(
+        button_queue,
+        Input::new(board!(p, btn_exe), Pull::Up),
+        Input::new(board!(p, btn_can), Pull::Up),
+        Input::new(board!(p, joy_up), Pull::Up),
+        Input::new(board!(p, joy_down), Pull::Up),
+        Input::new(board!(p, joy_left), Pull::Up),
+        Input::new(board!(p, joy_right), Pull::Up),
+        Input::new(board!(p, joy_fire), Pull::Up),
+    );
+    spawner.spawn(button_task(buttons).unwrap());
+    let button = ButtonSubscriber::new();
 
     // EPD dislay
     let mut epd_bus_config = spim::Config::default();
@@ -56,4 +86,6 @@ pub async fn init(spawner: Spawner) {
     display.reset().await.expect("Could not reset the display");
 
     display.init().await.expect("Could not init display");
+
+    BadgePeripherals { led, button }
 }

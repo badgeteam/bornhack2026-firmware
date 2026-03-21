@@ -1,0 +1,8 @@
+[package]
+name = "bh-2026-traits"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+defmt = "1.0.1"
